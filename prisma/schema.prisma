@@ -1,0 +1,98 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String  @db.ObjectId
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  sessionToken String   @unique
+  userId       String   @db.ObjectId
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  name           String?
+  email          String?   @unique
+  emailVerified  DateTime?
+  image          String?
+  hashedPassword String?
+  accounts       Account[]
+  sessions       Session[]
+  urls          URL[]
+}
+
+model VerificationToken {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model URL {
+  id            String            @id @default(auto()) @map("_id") @db.ObjectId
+  url           String
+  name          String?
+  userId        String            @db.ObjectId
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkInterval Int               @default(5)
+  timeout       Int               @default(30)
+  retryCount    Int               @default(3)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  status        String            @default("pending")
+  lastChecked   DateTime?
+  responseTime  Int?
+  history       URLHistory[]
+  notifications URLNotification[]
+}
+
+model URLHistory {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  urlId        String   @db.ObjectId
+  url          URL      @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  status       String
+  responseTime Int?
+  timestamp    DateTime @default(now())
+  error        String?
+}
+
+model URLNotification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  urlId     String   @db.ObjectId
+  url       URL      @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  type      String   // 'email', 'webhook', etc.
+  channel   String   // email address, webhook URL, etc.
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
