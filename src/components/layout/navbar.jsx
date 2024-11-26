@@ -5,9 +5,12 @@ import { useSession, signOut } from 'next-auth/react';
 import { Menu, Transition } from '@headlessui/react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useState } from 'react';
+import { XMarkIcon, Bars3Icon } from '@heroicons/react/24/outline';
 
 export default function Navbar() {
   const { data: session } = useSession();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <motion.nav
@@ -16,18 +19,20 @@ export default function Navbar() {
       className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex">
+        <div className="flex justify-between h-16 items-center">
+          {/* Logo */}
+          <div className="flex items-center">
             <Link
-              href="/dashboard"
+              href="/"
               className="flex items-center text-xl font-bold text-blue-600 dark:text-blue-400"
             >
               PingMaster
             </Link>
           </div>
 
-          {session ? (
-            <div className="flex items-center">
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center space-x-4">
+            {session ? (
               <Menu as="div" className="relative ml-3">
                 <Menu.Button className="flex items-center max-w-xs rounded-full bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                   <img
@@ -50,9 +55,10 @@ export default function Navbar() {
                       {({ active }) => (
                         <Link
                           href="/settings"
-                          className={`${
-                            active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                          } block px-4 py-2 text-sm text-gray-700 dark:text-gray-200`}
+                          className={`
+                            ${active ? 'bg-gray-100 dark:bg-gray-700' : ''}
+                            block px-4 py-2 text-sm text-gray-700 dark:text-gray-200
+                          `}
                         >
                           Settings
                         </Link>
@@ -62,9 +68,10 @@ export default function Navbar() {
                       {({ active }) => (
                         <button
                           onClick={() => signOut()}
-                          className={`${
-                            active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                          } block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200`}
+                          className={`
+                            ${active ? 'bg-gray-100 dark:bg-gray-700' : ''}
+                            block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200
+                          `}
                         >
                           Sign out
                         </button>
@@ -73,19 +80,69 @@ export default function Navbar() {
                   </Menu.Items>
                 </Transition>
               </Menu>
-            </div>
-          ) : (
-            <div className="flex items-center">
+            ) : (
               <Link
                 href="/auth/signin"
                 className="text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400"
               >
                 Sign in
               </Link>
-            </div>
-          )}
+            )}
+          </div>
+
+          {/* Mobile Menu Button */}
+          <div className="md:hidden flex items-center">
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+            >
+              <span className="sr-only">Open main menu</span>
+              {isMobileMenuOpen ? (
+                <XMarkIcon className="block h-6 w-6" aria-hidden="true" />
+              ) : (
+                <Bars3Icon className="block h-6 w-6" aria-hidden="true" />
+              )}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Mobile Menu */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden">
+          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+            {session ? (
+              <>
+                <Link
+                  href="/dashboard"
+                  className="text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 block px-3 py-2 rounded-md text-base font-medium"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/settings"
+                  className="text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 block px-3 py-2 rounded-md text-base font-medium"
+                >
+                  Settings
+                </Link>
+                <button
+                  onClick={() => signOut()}
+                  className="w-full text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 block px-3 py-2 rounded-md text-base font-medium"
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/auth/signin"
+                className="text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 block px-3 py-2 rounded-md text-base font-medium"
+              >
+                Sign in
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </motion.nav>
   );
 }
