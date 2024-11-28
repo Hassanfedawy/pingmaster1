@@ -6,6 +6,9 @@ import { promisify } from 'util';
 
 const dnsResolve = promisify(dns.resolve);
 
+// Store active monitoring intervals
+const activeMonitoringIntervals = new Map();
+
 export class MonitoringService {
   static async checkUrl(urlData) {
     const startTime = Date.now();
@@ -61,7 +64,7 @@ export class MonitoringService {
     }
 
     // Update URL status
-    await prisma.url.update({
+    await prisma.URL.update({
       where: { id: urlData.id },
       data: {
         status,
@@ -71,7 +74,7 @@ export class MonitoringService {
     });
 
     // Create history record
-    await prisma.uRLHistory.create({
+    await prisma.URLHistory.create({
       data: {
         urlId: urlData.id,
         status,
@@ -82,7 +85,7 @@ export class MonitoringService {
 
     // Handle notifications if status is down or there are SSL issues
     if (status === 'down' || (sslInfo && sslInfo.daysUntilExpiry < 30)) {
-      const notifications = await prisma.uRLNotification.findMany({
+      const notifications = await prisma.URLNotification.findMany({
         where: {
           urlId: urlData.id,
           enabled: true,
@@ -130,6 +133,78 @@ export class MonitoringService {
       error,
       sslInfo
     };
+  }
+
+  static async startMonitoring() {
+    try {
+      // Clear any existing intervals
+      for (const interval of activeMonitoringIntervals.values()) {
+        clearInterval(interval);
+      }
+      activeMonitoringIntervals.clear();
+
+      // Get all URLs that need to be monitored
+      const urls = await prisma.URL.findMany();
+      
+      if (!urls || urls.length === 0) {
+        console.log('No URLs to monitor');
+        return;
+      }
+
+      // Set up monitoring intervals for each URL
+      for (const url of urls) {
+        if (activeMonitoringIntervals.has(url.id)) {
+          continue;
+        }
+
+        // Perform initial check
+        await this.checkUrl(url);
+
+        // Set up interval
+        const interval = setInterval(async () => {
+          try {
+            await this.checkUrl(url);
+          } catch (error) {
+            console.error(`Error monitoring URL ${url.id}:`, error);
+          }
+        }, url.monitoringInterval * 1000 || 300000); // Default to 5 minutes
+
+        activeMonitoringIntervals.set(url.id, interval);
+      }
+
+      console.log(`Started monitoring ${urls.length} URLs`);
+    } catch (error) {
+      console.error('Error starting monitoring:', error);
+      throw error;
+    }
+  }
+
+  static async setupUrlMonitoring(url) {
+    try {
+      // Clear existing interval if any
+      if (activeMonitoringIntervals.has(url.id)) {
+        clearInterval(activeMonitoringIntervals.get(url.id));
+      }
+
+      // Perform immediate check
+      await this.checkUrl(url);
+
+      // Set up new interval
+      const interval = setInterval(async () => {
+        try {
+          await this.checkUrl(url);
+        } catch (error) {
+          console.error(`Error monitoring ${url.url}:`, error);
+        }
+      }, url.checkInterval * 60 * 1000); // Convert minutes to milliseconds
+
+      // Store the interval
+      activeMonitoringIntervals.set(url.id, interval);
+
+    } catch (error) {
+      console.error(`Failed to setup monitoring for ${url.url}:`, error);
+      throw error;
+    }
   }
 
   static async checkSSL(hostname) {
@@ -201,30 +276,6 @@ export class MonitoringService {
 
       default:
         console.warn(`Unsupported notification type: ${notification.type}`);
-    }
-  }
-
-  static async startMonitoring() {
-    try {
-      // Get all URLs that need to be monitored
-      const urls = await prisma.uRL.findMany();
-      
-      // Set up monitoring intervals for each URL
-      for (const url of urls) {
-        const interval = url.checkInterval * 60 * 1000; // Convert minutes to milliseconds
-        setInterval(async () => {
-          try {
-            await this.checkUrl(url);
-          } catch (error) {
-            console.error(`Error monitoring ${url.url}:`, error);
-          }
-        }, interval);
-      }
-
-      console.log(`Started monitoring ${urls.length} URLs`);
-    } catch (error) {
-      console.error('Failed to start monitoring:', error);
-      throw error;
     }
   }
 }

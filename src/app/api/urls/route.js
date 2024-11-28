@@ -86,15 +86,6 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const session = await getServerSession(authOptions);
-    console.log('Detailed Session Info:', {
-      user: session?.user ? {
-        id: session.user.id,
-        email: session.user.email,
-        name: session.user.name
-      } : 'No session',
-      sessionExists: !!session
-    });
-
     if (!session?.user?.id) {
       console.warn('Unauthorized access attempt to /api/urls');
       return NextResponse.json(
@@ -121,11 +112,14 @@ export async function POST(req) {
         checkInterval: +checkInterval || 5,
         timeout: 30,
         retryCount: 3,
-        status: 'pending'
+        status: 'checking' // Changed from 'pending' to 'checking'
       },
     });
 
-    console.log('Created URL:', newUrl);
+    // Import and use MonitoringService to perform immediate check
+    const { MonitoringService } = await import('@/lib/monitoring');
+    await MonitoringService.setupUrlMonitoring(newUrl);
+
     return NextResponse.json({ url: newUrl });
   } catch (error) {
     console.error('Error creating URL:', error);
