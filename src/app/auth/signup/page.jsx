@@ -44,12 +44,13 @@ export default function SignUp() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Something went wrong');
+        throw new Error(data.error || 'Something went wrong');
       }
 
       // Sign in the user after successful registration
       const result = await signIn('credentials', {
-        redirect: false,
+        redirect: true,
+        callbackUrl: '/dashboard',
         email: formData.email,
         password: formData.password,
       });
@@ -57,11 +58,8 @@ export default function SignUp() {
       if (result?.error) {
         throw new Error(result.error);
       }
-
-      router.push('/dashboard');
     } catch (err) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };

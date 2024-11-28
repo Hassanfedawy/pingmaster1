@@ -22,7 +22,8 @@ export default function SignIn() {
 
     try {
       const result = await signIn('credentials', {
-        redirect: false,
+        redirect: true,
+        callbackUrl: '/dashboard',
         email: formData.email,
         password: formData.password,
       });
@@ -30,11 +31,8 @@ export default function SignIn() {
       if (result?.error) {
         throw new Error(result.error);
       }
-
-      router.push('/dashboard');
     } catch (err) {
       setError('Invalid email or password');
-    } finally {
       setLoading(false);
     }
   };
