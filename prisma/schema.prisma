@@ -38,15 +38,17 @@ model Session {
 }
 
 model User {
-  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  id             String          @id @default(auto()) @map("_id") @db.ObjectId
   name           String?
-  email          String?   @unique
+  email          String?         @unique
   emailVerified  DateTime?
   image          String?
   hashedPassword String?
   accounts       Account[]
   sessions       Session[]
-  urls          URL[]
+  urls           URL[]
+  notifications  Notification[]
+  webhookConfigs WebhookConfig[]
 }
 
 model VerificationToken {
@@ -59,21 +61,22 @@ model VerificationToken {
 }
 
 model URL {
-  id            String            @id @default(auto()) @map("_id") @db.ObjectId
-  url           String
-  name          String?
-  userId        String            @db.ObjectId
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  checkInterval Int               @default(5)
-  timeout       Int               @default(30)
-  retryCount    Int               @default(3)
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  status        String            @default("pending")
-  lastChecked   DateTime?
-  responseTime  Int?
-  history       URLHistory[]
-  notifications URLNotification[]
+  id                String            @id @default(auto()) @map("_id") @db.ObjectId
+  url               String
+  name              String?
+  userId            String            @db.ObjectId
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkInterval     Int               @default(5)
+  timeout           Int               @default(30)
+  retryCount        Int               @default(3)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  status            String            @default("pending")
+  lastChecked       DateTime?
+  responseTime      Int?
+  history           URLHistory[]
+  notifications     URLNotification[]
+  userNotifications Notification[]
 }
 
 model URLHistory {
@@ -90,9 +93,53 @@ model URLNotification {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   urlId     String   @db.ObjectId
   url       URL      @relation(fields: [urlId], references: [id], onDelete: Cascade)
-  type      String   // 'email', 'webhook', etc.
-  channel   String   // email address, webhook URL, etc.
+  type      String // 'email', 'webhook', etc.
+  channel   String // email address, webhook URL, etc.
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String // 'success', 'error', 'warning', 'info'
+  read      Boolean  @default(false)
+  urlId     String?  @db.ObjectId
+  url       URL?     @relation(fields: [urlId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WebhookConfig {
+  id         String            @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String            @db.ObjectId
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  url        String
+  secret     String? // For webhook signature verification
+  events     String[] // Array of event types to send
+  active     Boolean           @default(true)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  deliveries WebhookDelivery[]
+}
+
+model WebhookDelivery {
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  webhookId      String        @db.ObjectId
+  webhook        WebhookConfig @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  eventType      String
+  payload        Json
+  responseStatus Int?
+  responseBody   String?
+  error          String?
+  attempts       Int           @default(0)
+  nextRetry      DateTime?
+  status         String // 'pending', 'success', 'failed', 'retrying'
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 }
