@@ -3,6 +3,7 @@ import { createNotification } from './notifications.js';
 import https from 'https';
 import dns from 'dns';
 import { promisify } from 'util';
+import { sendIncidentEmail } from './email';
 
 const dnsResolve = promisify(dns.resolve);
 
@@ -83,47 +84,52 @@ export class MonitoringService {
       },
     });
 
-    // Handle notifications if status is down or there are SSL issues
-    if (status === 'down' || (sslInfo && sslInfo.daysUntilExpiry < 30)) {
-      const notifications = await prisma.URLNotification.findMany({
-        where: {
-          urlId: urlData.id,
-          enabled: true,
-        },
-        include: {
-          url: {
-            select: {
-              user: {
-                select: {
-                  email: true,
-                  id: true
-                }
-              }
-            }
-          }
-        }
-      });
-
-      for (const notification of notifications) {
+    // If there's an error or the status is down, send notification
+    if (status === 'down' || error) {
+      try {
         // Create notification in the database
         await createNotification({
-          userId: notification.url.user.id,
-          title: status === 'down' ? 'Website Down Alert' : 'SSL Certificate Warning',
+          userId: urlData.userId,
+          title: status === 'down' ? 'Website Down Alert' : 'Error Alert',
           message: status === 'down' 
             ? `${urlData.url} is currently down. Error: ${error}`
-            : `SSL certificate for ${urlData.url} will expire in ${sslInfo.daysUntilExpiry} days`,
-          type: status === 'down' ? 'error' : 'warning',
+            : `Error detected for ${urlData.url}: ${error}`,
+          type: 'error',
           urlId: urlData.id
         });
 
-        // Send notification based on type
-        await this.sendNotification(notification, {
-          url: urlData.url,
-          status,
-          error,
-          responseTime,
-          sslInfo
+        // Get user's email and send notification
+        const user = await prisma.user.findUnique({
+          where: { id: urlData.userId },
+          select: { email: true }
         });
+
+        if (user?.email) {
+          await sendIncidentEmail(user.email, {
+            url: urlData.url,
+            status,
+            error,
+            responseTime,
+            timestamp: new Date(),
+          });
+        }
+      } catch (notificationError) {
+        console.error('Failed to send notification:', notificationError);
+      }
+    }
+
+    // Handle SSL certificate warnings separately
+    if (sslInfo && sslInfo.daysUntilExpiry < 30) {
+      try {
+        await createNotification({
+          userId: urlData.userId,
+          title: 'SSL Certificate Warning',
+          message: `SSL certificate for ${urlData.url} will expire in ${sslInfo.daysUntilExpiry} days`,
+          type: 'warning',
+          urlId: urlData.id
+        });
+      } catch (sslNotificationError) {
+        console.error('Failed to send SSL notification:', sslNotificationError);
       }
     }
 
@@ -138,10 +144,7 @@ export class MonitoringService {
   static async startMonitoring() {
     try {
       // Clear any existing intervals
-      for (const interval of activeMonitoringIntervals.values()) {
-        clearInterval(interval);
-      }
-      activeMonitoringIntervals.clear();
+      this.stopAllMonitoring();
 
       // Get all URLs that need to be monitored
       const urls = await prisma.URL.findMany();
@@ -158,14 +161,24 @@ export class MonitoringService {
         }
 
         // Perform initial check
-        await this.checkUrl(url);
+        await this.checkUrl(url).catch(error => {
+          console.error(`Initial check failed for URL ${url.id}:`, error);
+        });
 
-        // Set up interval
+        // Set up interval with error handling
         const interval = setInterval(async () => {
           try {
             await this.checkUrl(url);
           } catch (error) {
             console.error(`Error monitoring URL ${url.id}:`, error);
+            // Update status to error state
+            await prisma.URL.update({
+              where: { id: url.id },
+              data: {
+                status: 'error',
+                lastChecked: new Date(),
+              },
+            }).catch(console.error);
           }
         }, url.monitoringInterval * 1000 || 300000); // Default to 5 minutes
 
@@ -175,8 +188,18 @@ export class MonitoringService {
       console.log(`Started monitoring ${urls.length} URLs`);
     } catch (error) {
       console.error('Error starting monitoring:', error);
+      this.stopAllMonitoring(); // Cleanup on error
       throw error;
     }
+  }
+
+  static stopAllMonitoring() {
+    // Clear any existing intervals
+    for (const interval of activeMonitoringIntervals.values()) {
+      clearInterval(interval);
+    }
+    activeMonitoringIntervals.clear();
+    console.log('Stopped all monitoring intervals');
   }
 
   static async setupUrlMonitoring(url) {

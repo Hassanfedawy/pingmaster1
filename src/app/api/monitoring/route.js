@@ -1,21 +1,22 @@
 import { MonitoringService } from '@/lib/monitoring';
 import { NextResponse } from 'next/server';
 
-// Use a more reliable way to track monitoring state
-let monitoringPromise = null;
+// Use global state to persist monitoring state across hot reloads
+const globalForMonitoring = global;
+globalForMonitoring.monitoringPromise = globalForMonitoring.monitoringPromise || null;
 
 export async function GET() {
   try {
-    if (!monitoringPromise) {
-      monitoringPromise = MonitoringService.startMonitoring();
-      await monitoringPromise;
+    if (!globalForMonitoring.monitoringPromise) {
+      globalForMonitoring.monitoringPromise = MonitoringService.startMonitoring();
+      await globalForMonitoring.monitoringPromise;
       return NextResponse.json({ message: 'Monitoring service started successfully' });
     }
     return NextResponse.json({ message: 'Monitoring service is already running' });
   } catch (error) {
     console.error('Failed to start monitoring service:', error);
     // Reset the promise on error so we can try again
-    monitoringPromise = null;
+    globalForMonitoring.monitoringPromise = null;
     return NextResponse.json(
       { error: 'Failed to start monitoring service: ' + error.message },
       { status: 500 }
@@ -23,14 +24,14 @@ export async function GET() {
   }
 }
 
-// Start monitoring service when the application starts
-if (!monitoringPromise) {
-  monitoringPromise = MonitoringService.startMonitoring()
+// Initialize monitoring in development (will be handled by _app.js in production)
+if (process.env.NODE_ENV === 'development' && !globalForMonitoring.monitoringPromise) {
+  globalForMonitoring.monitoringPromise = MonitoringService.startMonitoring()
     .then(() => {
-      console.log('Monitoring service started automatically');
+      console.log('Monitoring service started automatically in development');
     })
     .catch((error) => {
       console.error('Failed to start monitoring service:', error);
-      monitoringPromise = null;
+      globalForMonitoring.monitoringPromise = null;
     });
 }

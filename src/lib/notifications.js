@@ -1,17 +1,5 @@
 import { prisma } from './prisma';
-import nodemailer from 'nodemailer';
-import emailQueue from './emailQueue';
-
-// Create reusable transporter using Gmail SMTP
-export const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
+import { transporter } from './email';
 
 // Email templates
 const emailTemplates = {
@@ -129,218 +117,62 @@ export async function createNotification({
         type,
         urlId,
       },
-      include: {
-        user: true,
-        url: true,
-      },
     });
-
-    // Send real-time notification
-    const { sendEventToUser } = await import('@/app/api/notifications/sse/route');
-    sendEventToUser(userId, {
-      type: 'notification',
-      action: 'created',
-      data: notification,
-    });
-
-    // Trigger webhooks
-    const webhooks = await prisma.webhookConfig.findMany({
-      where: {
-        userId,
-        active: true,
-        events: {
-          hasSome: ['*', 'notification.created'],
-        },
-      },
-    });
-
-    for (const webhook of webhooks) {
-      const { createWebhookDelivery, processWebhookDelivery } = await import(
-        '@/lib/webhooks'
-      );
-      const delivery = await createWebhookDelivery({
-        webhookId: webhook.id,
-        eventType: 'notification.created',
-        payload: {
-          id: notification.id,
-          title: notification.title,
-          message: notification.message,
-          type: notification.type,
-          url: notification.url?.url,
-          createdAt: notification.createdAt,
-        },
-      });
-      processWebhookDelivery(delivery);
-    }
-
-    // If it's an important notification (error/warning) and user has email notifications enabled
-    if (['error', 'warning'].includes(type)) {
-      const urlNotification = urlId
-        ? await prisma.uRLNotification.findFirst({
-            where: {
-              urlId,
-              type: 'email',
-              enabled: true,
-            },
-          })
-        : null;
-
-      if (urlNotification) {
-        await sendEmailNotification({
-          to: notification.user.email,
-          subject: title,
-          text: message,
-          type,
-          urlName: notification.url?.name || 'Unknown URL',
-          urlAddress: notification.url?.url || '',
-        });
-      }
-    }
 
     return notification;
   } catch (error) {
-    console.error('Error creating notification:', error);
+    console.error('Failed to create notification:', error);
     throw error;
   }
 }
 
-export async function sendEmailNotification({
-  to,
-  subject,
-  text,
-  type = 'info',
-  urlName,
-  urlAddress,
-}) {
-  const template = emailTemplates[type]({
-    title: subject,
-    message: text,
-    urlName,
-    urlAddress,
-  });
-
-  const emailData = {
-    from: process.env.EMAIL_FROM || '"PingMaster" <noreply@pingmaster.com>',
-    to,
-    subject: template.subject,
-    text,
-    html: template.template,
-  };
-
-  // Add to queue instead of sending directly
-  emailQueue.addToQueue(emailData);
-}
-
 export async function markNotificationsAsRead(notificationIds, userId) {
   try {
-    await prisma.notification.updateMany({
+    const result = await prisma.notification.updateMany({
       where: {
         id: { in: notificationIds },
-        userId,
+        userId: userId,
       },
       data: {
         read: true,
       },
     });
 
-    // Send real-time update
-    const { sendEventToUser } = await import('@/app/api/notifications/sse/route');
-    sendEventToUser(userId, {
-      type: 'notification',
-      action: 'updated',
-      data: { ids: notificationIds, read: true },
-    });
-
-    // Trigger webhooks
-    const webhooks = await prisma.webhookConfig.findMany({
-      where: {
-        userId,
-        active: true,
-        events: {
-          hasSome: ['*', 'notification.updated'],
-        },
-      },
-    });
-
-    for (const webhook of webhooks) {
-      const { createWebhookDelivery, processWebhookDelivery } = await import(
-        '@/lib/webhooks'
-      );
-      const delivery = await createWebhookDelivery({
-        webhookId: webhook.id,
-        eventType: 'notification.updated',
-        payload: {
-          ids: notificationIds,
-          read: true,
-          updatedAt: new Date(),
-        },
-      });
-      processWebhookDelivery(delivery);
-    }
+    return result;
   } catch (error) {
-    console.error('Error marking notifications as read:', error);
+    console.error('Failed to mark notifications as read:', error);
     throw error;
   }
 }
 
 export async function deleteNotifications(notificationIds, userId) {
   try {
-    await prisma.notification.deleteMany({
+    const result = await prisma.notification.deleteMany({
       where: {
         id: { in: notificationIds },
-        userId,
+        userId: userId,
       },
     });
 
-    // Send real-time update
-    const { sendEventToUser } = await import('@/app/api/notifications/sse/route');
-    sendEventToUser(userId, {
-      type: 'notification',
-      action: 'deleted',
-      data: { ids: notificationIds },
-    });
-
-    // Trigger webhooks
-    const webhooks = await prisma.webhookConfig.findMany({
-      where: {
-        userId,
-        active: true,
-        events: {
-          hasSome: ['*', 'notification.deleted'],
-        },
-      },
-    });
-
-    for (const webhook of webhooks) {
-      const { createWebhookDelivery, processWebhookDelivery } = await import(
-        '@/lib/webhooks'
-      );
-      const delivery = await createWebhookDelivery({
-        webhookId: webhook.id,
-        eventType: 'notification.deleted',
-        payload: {
-          ids: notificationIds,
-          deletedAt: new Date(),
-        },
-      });
-      processWebhookDelivery(delivery);
-    }
+    return result;
   } catch (error) {
-    console.error('Error deleting notifications:', error);
+    console.error('Failed to delete notifications:', error);
     throw error;
   }
 }
 
 export async function getUnreadNotificationCount(userId) {
   try {
-    return await prisma.notification.count({
+    const count = await prisma.notification.count({
       where: {
         userId,
         read: false,
       },
     });
+
+    return count;
   } catch (error) {
-    console.error('Error getting unread notification count:', error);
+    console.error('Failed to get unread notification count:', error);
     throw error;
   }
 }

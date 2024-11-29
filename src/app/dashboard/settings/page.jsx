@@ -10,6 +10,7 @@ import {
   KeyIcon,
   CreditCardIcon,
   ClockIcon,
+  CheckIcon,
 } from '@heroicons/react/24/outline';
 
 export default function SettingsPage() {
@@ -26,6 +27,7 @@ export default function SettingsPage() {
     company: '',
     timezone: 'UTC',
   });
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleNotificationChange = (type) => {
     setNotificationSettings(prev => ({
@@ -36,7 +38,10 @@ export default function SettingsPage() {
 
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
-    // TODO: Implement profile update
+    setIsSaving(true);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setIsSaving(false);
   };
 
   const tabs = [
@@ -49,148 +54,170 @@ export default function SettingsPage() {
 
   return (
     <DashboardLayout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Settings</h1>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Manage your account settings and preferences
-            </p>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+          {/* Page header */}
+          <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg mb-6">
+            <div className="px-4 py-5 sm:p-6">
+              <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Settings</h1>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                Manage your account settings and preferences
+              </p>
+            </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 shadow rounded-lg">
-            <div className="border-b border-gray-200 dark:border-gray-700">
-              <nav className="-mb-px flex space-x-8 px-6" aria-label="Tabs">
-                {tabs.map((tab) => (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {/* Sidebar navigation */}
+            <nav className="space-y-1">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`
-                      ${activeTab === tab.id
-                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                      }
-                      group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm
-                    `}
+                    className={`${
+                      activeTab === tab.id
+                        ? 'bg-blue-50 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-200'
+                        : 'border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    } flex items-center w-full px-3 py-2 text-sm font-medium border-l-4 transition-colors duration-200`}
                   >
-                    <tab.icon className="h-5 w-5 mr-2" aria-hidden="true" />
+                    <Icon className="h-5 w-5 mr-3" />
                     {tab.name}
                   </button>
-                ))}
-              </nav>
-            </div>
+                );
+              })}
+            </nav>
 
-            <div className="p-6">
-              {activeTab === 'profile' && (
-                <motion.form
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  onSubmit={handleProfileSubmit}
-                  className="space-y-6"
-                >
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Name
-                    </label>
-                    <input
-                      type="text"
-                      value={profileData.name}
-                      onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600"
-                    />
-                  </div>
+            {/* Main content area */}
+            <div className="md:col-span-3">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3 }}
+                className="bg-white dark:bg-gray-800 shadow-sm rounded-lg"
+              >
+                <div className="px-4 py-5 sm:p-6">
+                  {activeTab === 'profile' && (
+                    <form onSubmit={handleProfileSubmit} className="space-y-6">
+                      <div>
+                        <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Name
+                        </label>
+                        <input
+                          type="text"
+                          name="name"
+                          id="name"
+                          value={profileData.name}
+                          onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={profileData.email}
-                      onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600"
-                    />
-                  </div>
+                      <div>
+                        <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          name="email"
+                          id="email"
+                          value={profileData.email}
+                          onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Company
-                    </label>
-                    <input
-                      type="text"
-                      value={profileData.company}
-                      onChange={(e) => setProfileData({ ...profileData, company: e.target.value })}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600"
-                    />
-                  </div>
+                      <div>
+                        <label htmlFor="company" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Company
+                        </label>
+                        <input
+                          type="text"
+                          name="company"
+                          id="company"
+                          value={profileData.company}
+                          onChange={(e) => setProfileData({ ...profileData, company: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Timezone
-                    </label>
-                    <select
-                      value={profileData.timezone}
-                      onChange={(e) => setProfileData({ ...profileData, timezone: e.target.value })}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600"
-                    >
-                      <option value="UTC">UTC</option>
-                      <option value="America/New_York">Eastern Time</option>
-                      <option value="America/Chicago">Central Time</option>
-                      <option value="America/Denver">Mountain Time</option>
-                      <option value="America/Los_Angeles">Pacific Time</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <button
-                      type="submit"
-                      className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      Save Changes
-                    </button>
-                  </div>
-                </motion.form>
-              )}
-
-              {activeTab === 'notifications' && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="space-y-6"
-                >
-                  <div className="space-y-4">
-                    {Object.entries(notificationSettings).map(([type, enabled]) => (
-                      <div key={type} className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-lg font-medium text-gray-900 dark:text-white capitalize">
-                            {type} Notifications
-                          </h3>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Receive notifications via {type}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleNotificationChange(type)}
-                          className={`
-                            ${enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
-                            relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
-                          `}
+                      <div>
+                        <label htmlFor="timezone" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Timezone
+                        </label>
+                        <select
+                          id="timezone"
+                          name="timezone"
+                          value={profileData.timezone}
+                          onChange={(e) => setProfileData({ ...profileData, timezone: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm"
                         >
-                          <span className="sr-only">Toggle {type} notifications</span>
-                          <span
-                            className={`
-                              ${enabled ? 'translate-x-5' : 'translate-x-0'}
-                              pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200
-                            `}
-                          />
+                          <option value="UTC">UTC</option>
+                          <option value="EST">EST</option>
+                          <option value="PST">PST</option>
+                        </select>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="submit"
+                          disabled={isSaving}
+                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                        >
+                          {isSaving ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <CheckIcon className="h-4 w-4 mr-2" />
+                              Save Changes
+                            </>
+                          )}
                         </button>
                       </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
+                    </form>
+                  )}
 
-              {/* Add other tab contents as needed */}
+                  {activeTab === 'notifications' && (
+                    <div className="space-y-6">
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-white">Notification Preferences</h3>
+                      <div className="space-y-4">
+                        {Object.entries(notificationSettings).map(([type, enabled]) => (
+                          <div key={type} className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900 dark:text-white capitalize">{type} Notifications</p>
+                              <p className="text-sm text-gray-500 dark:text-gray-400">
+                                Receive notifications via {type}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleNotificationChange(type)}
+                              className={`${
+                                enabled
+                                  ? 'bg-blue-600'
+                                  : 'bg-gray-200 dark:bg-gray-700'
+                              } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                            >
+                              <span
+                                className={`${
+                                  enabled ? 'translate-x-5' : 'translate-x-0'
+                                } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                              />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
             </div>
           </div>
         </div>

@@ -136,10 +136,32 @@ export async function GET(request) {
       }]
     };
 
+    // Collect recent incidents
+    const recentIncidents = [];
+    urls.forEach(url => {
+      if (url.history.length > 0) {
+        url.history.forEach(record => {
+          if (record.status === 'down' || record.status === 'error') {
+            recentIncidents.push({
+              id: record.id,
+              url: url.url,
+              status: record.status,
+              error: record.error,
+              timestamp: record.timestamp
+            });
+          }
+        });
+      }
+    });
+
+    // Sort incidents by timestamp, most recent first
+    recentIncidents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
     return NextResponse.json({
       responseTimeData,
       uptimeData,
-      incidentDistribution
+      incidentDistribution,
+      incidents: recentIncidents.slice(0, 10) // Return only the 10 most recent incidents
     });
   } catch (error) {
     console.error('Analytics error:', error);
