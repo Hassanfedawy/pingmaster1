@@ -12,31 +12,61 @@ const activeMonitoringIntervals = new Map();
 export class MonitoringService {
   static async startMonitoring() {
     try {
-      // Clear any existing intervals
-      this.stopAllMonitoring();
-
-      // Get all URLs that need to be monitored
+      // Fetch URLs with optional user inclusion
       const urls = await prisma.URL.findMany({
-        include: {
-          user: true
+        include: { 
+          user: false  // Explicitly set to false to avoid required user relation
         }
       });
-      
-      if (!urls || urls.length === 0) {
-        console.log('No URLs to monitor');
-        return;
-      }
 
-      // Set up monitoring intervals for each URL
+      console.log(`Starting monitoring for ${urls.length} URLs`);
+
+      // Stop any existing monitoring to prevent duplicate intervals
+      this.stopAllMonitoring();
+
       for (const url of urls) {
-        await this.setupUrlMonitoring(url);
+        try {
+          // Skip URLs without a check interval
+          if (!url.checkInterval || url.checkInterval <= 0) {
+            console.warn(`Skipping URL ${url.id} due to invalid check interval`);
+            continue;
+          }
+
+          // Initial check
+          await this.checkUrl({
+            ...url,
+            timeout: url.timeout || 30,  // Default timeout
+          });
+
+          // Set up new interval
+          const interval = setInterval(async () => {
+            try {
+              await this.checkUrl({
+                ...url,
+                timeout: url.timeout || 30,  // Default timeout
+              });
+            } catch (intervalError) {
+              console.error(`Interval error for URL ${url.url}:`, intervalError);
+            }
+          }, (url.checkInterval || 5) * 60 * 1000); // Default to 5 minutes if not set
+
+          // Store the interval with metadata
+          activeMonitoringIntervals.set(url.id, {
+            interval,
+            lastCheck: new Date(),
+            url: url
+          });
+
+        } catch (urlError) {
+          console.error(`Failed to setup monitoring for ${url.url}:`, urlError);
+          // Continue with next URL even if one fails
+        }
       }
 
-      console.log(`Started monitoring ${urls.length} URLs`);
+      console.log('Monitoring service started successfully');
     } catch (error) {
-      console.error('Error starting monitoring:', error);
-      this.stopAllMonitoring(); // Cleanup on error
-      throw error;
+      console.error('Error starting monitoring service:', error);
+      throw error;  // Rethrow to allow caller to handle
     }
   }
 

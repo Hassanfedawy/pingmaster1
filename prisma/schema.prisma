@@ -64,22 +64,25 @@ model VerificationToken {
 }
 
 model URL {
-  id                String            @id @default(auto()) @map("_id") @db.ObjectId
-  url               String
-  name              String?
-  userId            String            @db.ObjectId
-  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  checkInterval     Int               @default(5)
-  timeout           Int               @default(30)
-  retryCount        Int               @default(3)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  status            String            @default("pending")
-  lastChecked       DateTime?
-  responseTime      Int?
-  history           URLHistory[]
-  notifications     URLNotification[]
-  userNotifications Notification[]
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  url           String
+  name          String?
+  status        String   @default("pending")
+  lastChecked   DateTime?
+  responseTime  Float?
+  checkInterval Int      @default(5)
+  timeout       Int      @default(30)
+  
+  // Make userId optional
+  userId        String?  @db.ObjectId
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  urlHistories  URLHistory[]
+  notifications Notification[]
+  urlNotifications URLNotification[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model URLHistory {
