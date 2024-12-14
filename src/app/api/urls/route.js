@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { MonitoringService } from '@/lib/monitoring';
 
 // Helper function to validate URL format
 function validateUrl(url) {
@@ -17,170 +18,132 @@ function validateUrl(url) {
 export async function GET(req) {
   try {
     const session = await getServerSession(authOptions);
-    console.log('Detailed Session Info:', {
-      user: session?.user ? {
-        id: session.user.id,
-        email: session.user.email,
-        name: session.user.name
-      } : 'No session',
-      sessionExists: !!session
-    });
-
     if (!session?.user?.id) {
-      console.warn('Unauthorized access attempt to /api/urls');
-      return NextResponse.json(
-        { error: 'Unauthorized - Please sign in' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Please sign in to continue' }, { status: 401 });
     }
 
     const urls = await prisma.URL.findMany({
       where: {
         userId: session.user.id,
       },
-      include: {
-        history: {
-          take: 1,
-          orderBy: {
-            timestamp: 'desc'
-          }
-        }
-      },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    console.log('Fetched URLs:', {
-      count: urls.length,
-      userIds: urls.map(url => url.userId),
-      urlIds: urls.map(url => url.id)
-    });
-
-    return NextResponse.json({
-      urls: urls.map(url => ({
-        ...url,
-        lastStatus: url.history[0]?.status || 'pending',
-        lastChecked: url.history[0]?.timestamp || null,
-        history: undefined
-      }))
-    });
+    return NextResponse.json({ urls });
   } catch (error) {
-    console.error('Complete Error in GET /api/urls:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack
-    });
-    
-    return NextResponse.json(
-      { 
-        error: 'Failed to retrieve URLs',
-        details: process.env.NODE_ENV === 'development' ? error.message : 'Internal Server Error'
-      },
-      { status: 500 }
-    );
+    console.error('Error fetching URLs:', error);
+    return NextResponse.json({ error: 'Failed to fetch URLs' }, { status: 500 });
   }
 }
 
-// POST /api/urls - Create a new URL
+// POST /api/urls - Add a new URL to monitor
 export async function POST(req) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      console.warn('Unauthorized access attempt to /api/urls');
-      return NextResponse.json(
-        { error: 'Unauthorized - Please sign in' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Please sign in to continue' }, { status: 401 });
     }
 
-    const data = await req.json();
-    const { url, name, checkInterval } = data;
+    const { url, name, checkInterval = 5 } = await req.json();
 
     if (!url || !validateUrl(url)) {
+      return NextResponse.json({ error: 'Please provide a valid URL' }, { status: 400 });
+    }
+
+    if (checkInterval < 1) {
       return NextResponse.json(
-        { error: 'Invalid URL format' },
+        { error: 'Check interval must be at least 1 minute' },
         { status: 400 }
       );
     }
 
+    const now = new Date();
     const newUrl = await prisma.URL.create({
       data: {
-        userId: session.user.id,
         url,
         name: name || url,
-        checkInterval: +checkInterval || 5,
+        checkInterval,
+        userId: session.user.id,
+        status: 'pending',
         timeout: 30,
         retryCount: 3,
-        status: 'checking' // Changed from 'pending' to 'checking'
-      },
+        createdAt: now,
+        updatedAt: now
+      }
     });
 
-    // Import and use MonitoringService to perform immediate check
-    const { MonitoringService } = await import('@/lib/monitoring');
+    // Start monitoring the new URL
     await MonitoringService.setupUrlMonitoring(newUrl);
 
-    return NextResponse.json({ url: newUrl });
+    return NextResponse.json({ 
+      success: true,
+      url: newUrl 
+    });
   } catch (error) {
     console.error('Error creating URL:', error);
     return NextResponse.json(
-      { error: 'Failed to create URL: ' + error.message },
+      { error: 'Failed to add URL', details: error.message },
       { status: 500 }
     );
   }
 }
 
-// PUT /api/urls - Update a URL
+// PUT /api/urls - Update an existing URL
 export async function PUT(req) {
   try {
     const session = await getServerSession(authOptions);
-    
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Please sign in to continue' }, { status: 401 });
     }
 
-    const data = await req.json();
-    const { id, url, name, checkInterval } = data;
+    const { id, url, name, checkInterval } = await req.json();
 
     if (!id) {
+      return NextResponse.json({ error: 'URL ID is required' }, { status: 400 });
+    }
+
+    const existingUrl = await prisma.URL.findUnique({
+      where: { id },
+    });
+
+    if (!existingUrl || existingUrl.userId !== session.user.id) {
+      return NextResponse.json({ error: 'URL not found' }, { status: 404 });
+    }
+
+    if (url && !validateUrl(url)) {
+      return NextResponse.json({ error: 'Please provide a valid URL' }, { status: 400 });
+    }
+
+    if (checkInterval && checkInterval < 1) {
       return NextResponse.json(
-        { error: 'URL ID is required' },
+        { error: 'Check interval must be at least 1 minute' },
         { status: 400 }
       );
     }
 
-    // Verify ownership
-    const existingUrl = await prisma.URL.findUnique({
-      where: { id },
-      select: { userId: true }
-    });
-
-    if (!existingUrl || existingUrl.userId !== session.user.id) {
-      return NextResponse.json(
-        { error: 'URL not found or unauthorized' },
-        { status: 404 }
-      );
-    }
-
-    // Update the URL
     const updatedUrl = await prisma.URL.update({
       where: { id },
       data: {
-        url: url,
-        name: name,
-        checkInterval: +checkInterval || 5,
+        url: url || existingUrl.url,
+        name: name || existingUrl.name,
+        checkInterval: checkInterval || existingUrl.checkInterval,
+        updatedAt: new Date()
       },
     });
 
-    console.log('Updated URL:', updatedUrl);
-    return NextResponse.json({ url: updatedUrl });
+    // Restart monitoring with updated details
+    await MonitoringService.setupUrlMonitoring(updatedUrl);
+
+    return NextResponse.json({ 
+      success: true,
+      url: updatedUrl 
+    });
   } catch (error) {
     console.error('Error updating URL:', error);
     return NextResponse.json(
-      { error: 'Failed to update URL: ' + error.message },
+      { error: 'Failed to update URL', details: error.message },
       { status: 500 }
     );
   }
@@ -190,53 +153,40 @@ export async function PUT(req) {
 export async function DELETE(req) {
   try {
     const session = await getServerSession(authOptions);
-    
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Please sign in to continue' }, { status: 401 });
     }
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json(
-        { error: 'URL ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'URL ID is required' }, { status: 400 });
     }
 
-    // Verify ownership
-    const existingUrl = await prisma.URL.findUnique({
+    const url = await prisma.URL.findUnique({
       where: { id },
-      select: { userId: true }
     });
 
-    if (!existingUrl || existingUrl.userId !== session.user.id) {
-      return NextResponse.json(
-        { error: 'URL not found or unauthorized' },
-        { status: 404 }
-      );
+    if (!url || url.userId !== session.user.id) {
+      return NextResponse.json({ error: 'URL not found' }, { status: 404 });
     }
 
-    // Delete the URL and its associated history
-    await prisma.URLHistory.deleteMany({
-      where: { urlId: id }
-    });
-
-    // Delete the URL
     await prisma.URL.delete({
       where: { id },
     });
 
-    console.log('Deleted URL:', id);
-    return NextResponse.json({ message: 'URL deleted successfully' });
+    // Stop monitoring the URL
+    MonitoringService.cleanupUrlMonitoring(id);
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'URL deleted successfully' 
+    });
   } catch (error) {
     console.error('Error deleting URL:', error);
     return NextResponse.json(
-      { error: 'Failed to delete URL: ' + error.message },
+      { error: 'Failed to delete URL', details: error.message },
       { status: 500 }
     );
   }

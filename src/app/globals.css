@@ -77,6 +77,59 @@
   .btn-responsive {
     @apply px-4 py-2 sm:px-6 sm:py-3 rounded-md text-sm sm:text-base;
   }
+
+  /* Enhanced Responsive Utilities */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  /* Improved Mobile Navigation */
+  .mobile-nav {
+    @apply fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 
+           safe-bottom border-t border-gray-200 dark:border-gray-700;
+  }
+
+  /* Better Touch Targets */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  /* Responsive Font Sizes */
+  .text-fluid {
+    @apply text-base md:text-lg lg:text-xl;
+  }
+
+  /* Small Screen Optimizations */
+  .xs-text {
+    @apply text-xs sm:text-sm;
+  }
+  
+  .xs-container {
+    @apply px-2 sm:px-4;
+  }
+  
+  .xs-touch {
+    @apply min-h-[36px] min-w-[36px] sm:min-h-[44px] sm:min-w-[44px];
+  }
+
+  /* Table Responsiveness */
+  .table-responsive {
+    @apply w-full overflow-x-auto -mx-4 sm:mx-0;
+  }
+
+  /* Small Screen Padding */
+  .xs-padding {
+    @apply p-2 sm:p-4 md:p-6;
+  }
+
+  /* Small Screen Grid */
+  .xs-grid {
+    @apply grid-cols-1 gap-2 sm:gap-4;
+  }
 }
 
 /* Base styles to prevent horizontal overflow */
@@ -87,13 +140,9 @@ html, body {
   padding: 0;
 }
 
-/* Container width constraints */
+/* Base container adjustments */
 .container {
-  width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: 1rem;
-  padding-right: 1rem;
+  @apply w-full mx-auto px-2 sm:px-4 md:px-6 lg:px-8 max-w-7xl;
 }
 
 /* Responsive padding adjustments */
@@ -176,4 +225,19 @@ html, body {
 /* Responsive Images */
 .img-responsive {
   @apply w-full h-auto object-cover rounded-lg;
+}
+
+/* Table adjustments for small screens */
+.table-cell-xs {
+  @apply px-2 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm;
+}
+
+/* Card adjustments for small screens */
+.card-xs {
+  @apply rounded-lg shadow-sm mx-2 sm:mx-4 md:mx-6 p-3 sm:p-4 md:p-6;
+}
+
+/* Button adjustments for small screens */
+.button-xs {
+  @apply px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm;
 }

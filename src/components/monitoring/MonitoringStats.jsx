@@ -54,107 +54,182 @@ export default function MonitoringStats({ urlId }) {
 
   useEffect(() => {
     const fetchStats = async () => {
+      // If no URL is selected, don't fetch stats
+      if (!urlId) {
+        return;
+      }
+
       try {
         const response = await fetch(`/api/urls/${urlId}/stats`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch URL stats');
+        }
         const data = await response.json();
         setStats(data);
 
         // Update chart data
         setChartData({
           labels: data.history.map(h => new Date(h.timestamp).toLocaleTimeString()),
-          datasets: [{
-            label: 'Response Time (ms)',
-            data: data.history.map(h => h.responseTime),
-            borderColor: 'rgb(59, 130, 246)',
-            backgroundColor: 'rgba(59, 130, 246, 0.5)',
-          }],
+          datasets: [
+            {
+              label: 'Response Time (ms)',
+              data: data.history.map(h => h.responseTime),
+              borderColor: 'rgb(59, 130, 246)',
+              backgroundColor: 'rgba(59, 130, 246, 0.5)',
+            },
+          ],
         });
       } catch (error) {
-        console.error('Error fetching stats:', error);
+        console.error('Error fetching URL stats:', error);
       }
     };
 
     fetchStats();
-    const interval = setInterval(fetchStats, 60000); // Update every minute
-
-    return () => clearInterval(interval);
   }, [urlId]);
 
-  const statItems = [
-    {
-      name: 'Uptime',
-      value: stats.uptime,
-      icon: CheckCircleIcon,
-      color: 'text-green-500',
-    },
-    {
-      name: 'Avg Response Time',
-      value: stats.responseTime,
-      icon: ClockIcon,
-      color: 'text-blue-500',
-    },
-    {
-      name: 'Incidents',
-      value: stats.incidents,
-      icon: ExclamationCircleIcon,
-      color: 'text-yellow-500',
-    },
-    {
-      name: 'Total Downtime',
-      value: stats.downtime,
-      icon: ArrowDownIcon,
-      color: 'text-red-500',
-    },
-  ];
-
-  const chartOptions = {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'top',
-      },
-      title: {
-        display: true,
-        text: 'Response Time History',
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-      },
-    },
-  };
+  // If no URL is selected, show a message
+  if (!urlId) {
+    return (
+      <div className="text-center py-8">
+        <div className="flex flex-col items-center justify-center space-y-4">
+          <ClockIcon className="h-12 w-12 text-gray-400" />
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white">No URL Selected</h3>
+          <p className="text-gray-500 dark:text-gray-400">Select a URL to view its monitoring statistics</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {statItems.map((item) => (
-          <motion.div
-            key={item.name}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="relative bg-white dark:bg-gray-800 pt-5 px-4 pb-12 sm:pt-6 sm:px-6 shadow rounded-lg overflow-hidden"
-          >
-            <dt>
-              <div className={`absolute rounded-md p-3 ${item.color} bg-opacity-10`}>
-                <item.icon className={`h-6 w-6 ${item.color}`} aria-hidden="true" />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg"
+        >
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <CheckCircleIcon className="h-6 w-6 text-green-400" aria-hidden="true" />
               </div>
-              <p className="ml-16 text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                {item.name}
-              </p>
-            </dt>
-            <dd className="ml-16 pb-6 flex items-baseline sm:pb-7">
-              <p className="text-2xl font-semibold text-gray-900 dark:text-white">
-                {item.value}
-              </p>
-            </dd>
-          </motion.div>
-        ))}
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Uptime</dt>
+                  <dd className="flex items-baseline">
+                    <div className="text-2xl font-semibold text-gray-900 dark:text-white">{stats.uptime}</div>
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg"
+        >
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <ClockIcon className="h-6 w-6 text-blue-400" aria-hidden="true" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Response Time</dt>
+                  <dd className="flex items-baseline">
+                    <div className="text-2xl font-semibold text-gray-900 dark:text-white">{stats.responseTime}</div>
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg"
+        >
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <ExclamationCircleIcon className="h-6 w-6 text-yellow-400" aria-hidden="true" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Incidents</dt>
+                  <dd className="flex items-baseline">
+                    <div className="text-2xl font-semibold text-gray-900 dark:text-white">{stats.incidents}</div>
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg"
+        >
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <ArrowDownIcon className="h-6 w-6 text-red-400" aria-hidden="true" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Downtime</dt>
+                  <dd className="flex items-baseline">
+                    <div className="text-2xl font-semibold text-gray-900 dark:text-white">{stats.downtime}</div>
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </motion.div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-        <Line options={chartOptions} data={chartData} />
-      </div>
+      {/* Response Time Chart */}
+      {stats.history.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow"
+        >
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Response Time History</h3>
+          <div className="h-64">
+            <Line
+              data={chartData}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    title: {
+                      display: true,
+                      text: 'Response Time (ms)',
+                    },
+                  },
+                  x: {
+                    title: {
+                      display: true,
+                      text: 'Time',
+                    },
+                  },
+                },
+              }}
+            />
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

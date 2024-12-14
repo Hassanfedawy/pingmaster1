@@ -1,25 +1,35 @@
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { NextAuthProvider } from '@/components/providers/NextAuthProvider';
-import Navbar from '@/components/layout/navbar';
+import { initializeMonitoring } from '@/lib/init-monitoring';
+import Providers from './providers';
+import NavBar from '../components/layout/navbar';
 import { Toaster } from 'react-hot-toast';
 
 const inter = Inter({ subsets: ['latin'] });
 
+// Initialize monitoring on server start
+if (typeof window === 'undefined') {
+  initializeMonitoring().catch(error => {
+    console.error('Failed to initialize monitoring:', error);
+  });
+}
+
 export const metadata = {
-  title: 'PingMaster - URL Monitoring Platform',
-  description: 'Monitor your URLs with ease using PingMaster',
+  title: 'PingMaster - Website Monitoring',
+  description: 'Monitor your websites and get notified when they go down',
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className={inter.className}>
-        <NextAuthProvider>
-          <Navbar />
-          <main>{children}</main>
+        <Providers>
+          <NavBar/>
+          <main>
+            {children}
+          </main>
           <Toaster position="bottom-right" />
-        </NextAuthProvider>
+        </Providers>
       </body>
     </html>
   );
