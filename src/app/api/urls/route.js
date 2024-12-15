@@ -7,7 +7,15 @@ import { MonitoringService } from '@/lib/monitoring';
 // Helper function to validate URL format
 function validateUrl(url) {
   try {
-    new URL(url);
+    const parsedUrl = new URL(url);
+    // Check protocol
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return false;
+    }
+    // Check length
+    if (url.length > 2048) {
+      return false;
+    }
     return true;
   } catch {
     return false;

@@ -3,6 +3,7 @@ import { sendIncidentEmail } from './email';
 import https from 'https';
 import dns from 'dns';
 import { promisify } from 'util';
+import { emailThrottler } from './emailThrottling';
 
 const dnsResolve = promisify(dns.resolve);
 
@@ -12,61 +13,40 @@ const activeMonitoringIntervals = new Map();
 export class MonitoringService {
   static async startMonitoring() {
     try {
-      // Fetch URLs with optional user inclusion
       const urls = await prisma.URL.findMany({
         include: { 
-          user: false  // Explicitly set to false to avoid required user relation
+          user: {
+            select: {
+              id: true,
+              email: true,
+              emailNotifications: true
+            }
+          }
         }
       });
 
-      console.log(`Starting monitoring for ${urls.length} URLs`);
+      if (!urls.length) {
+        console.log('No URLs to monitor');
+        return;
+      }
 
-      // Stop any existing monitoring to prevent duplicate intervals
+      console.log(`Starting monitoring for ${urls.length} URLs`);
       this.stopAllMonitoring();
 
       for (const url of urls) {
+        if (!url.user) {
+          console.warn(`Skipping URL ${url.id}: No associated user`);
+          continue;
+        }
+
         try {
-          // Skip URLs without a check interval
-          if (!url.checkInterval || url.checkInterval <= 0) {
-            console.warn(`Skipping URL ${url.id} due to invalid check interval`);
-            continue;
-          }
-
-          // Initial check
-          await this.checkUrl({
-            ...url,
-            timeout: url.timeout || 30,  // Default timeout
-          });
-
-          // Set up new interval
-          const interval = setInterval(async () => {
-            try {
-              await this.checkUrl({
-                ...url,
-                timeout: url.timeout || 30,  // Default timeout
-              });
-            } catch (intervalError) {
-              console.error(`Interval error for URL ${url.url}:`, intervalError);
-            }
-          }, (url.checkInterval || 5) * 60 * 1000); // Default to 5 minutes if not set
-
-          // Store the interval with metadata
-          activeMonitoringIntervals.set(url.id, {
-            interval,
-            lastCheck: new Date(),
-            url: url
-          });
-
-        } catch (urlError) {
-          console.error(`Failed to setup monitoring for ${url.url}:`, urlError);
-          // Continue with next URL even if one fails
+          await this.setupUrlMonitoring(url);
+        } catch (error) {
+          console.error(`Failed to setup monitoring for ${url.url}:`, error);
         }
       }
-
-      console.log('Monitoring service started successfully');
     } catch (error) {
-      console.error('Error starting monitoring service:', error);
-      throw error;  // Rethrow to allow caller to handle
+      console.error('Failed to start monitoring:', error);
     }
   }
 
@@ -189,29 +169,38 @@ export class MonitoringService {
     // Handle notifications if site is down
     if (status === 'down') {
       try {
-        // Create notification in database
-        const notification = await prisma.notification.create({
-          data: {
-            userId: urlData.user.id,
-            title: 'Website Down Alert',
-            message: `${urlData.url} is currently down. Error: ${error}`,
-            type: 'error',
-            urlId: urlData.id,
-            createdAt: now,
-            updatedAt: now,
-            read: false
+        if (!urlData.user?.id) {
+          console.warn(`No user data for URL ${urlData.id}`);
+          return;
+        }
+        
+        // Create notification with retry
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            await prisma.notification.create({
+              data: {
+                userId: urlData.user.id,
+                title: 'Website Down Alert',
+                message: `${urlData.url} is currently down. Error: ${error}`,
+                type: 'error',
+                urlId: urlData.id,
+                createdAt: now,
+                updatedAt: now,
+                read: false
+              }
+            });
+            break;
+          } catch (err) {
+            retries--;
+            if (retries === 0) throw err;
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
-        });
+        }
 
         // Send email if user has email notifications enabled
         if (urlData.user.emailNotifications && urlData.user.email) {
-          await sendIncidentEmail(urlData.user.email, {
-            url: urlData.url,
-            status,
-            error,
-            responseTime,
-            timestamp: now,
-          });
+          await this.sendNotification(urlData, status, error);
         }
       } catch (notificationError) {
         console.error('Failed to send notification:', notificationError);
@@ -224,5 +213,29 @@ export class MonitoringService {
       error,
       lastChecked: now
     };
+  }
+
+  static async sendNotification(urlData, status, error) {
+    if (!urlData.user?.id || !urlData.user?.email) {
+      console.warn(`Skipping notification for URL ${urlData.id}: No user data`);
+      return;
+    }
+
+    if (!emailThrottler.canSendEmail(urlData.id, status)) {
+      console.log(`Email throttled for URL ${urlData.url}`);
+      return;
+    }
+
+    try {
+      await sendIncidentEmail(urlData.user.email, {
+        url: urlData.url,
+        status,
+        error,
+        responseTime: urlData.responseTime,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      console.error('Failed to send notification email:', error);
+    }
   }
 }

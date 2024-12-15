@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../lib/auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { subHours, subDays, subWeeks, subMonths } from 'date-fns';
-
+import { subHours, subDays } from 'date-fns';
 export const dynamic = 'force-dynamic';
-export const fetchCache = 'force-no-store';
 
 export async function GET(request) {
   try {
@@ -17,110 +15,122 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const timeRange = searchParams.get('timeRange') || '24h';
 
-    // Calculate the start date based on time range
-    const getStartDate = () => {
-      const now = new Date();
-      switch (timeRange) {
-        case '24h': return subHours(now, 24);
-        case '7d': return subDays(now, 7);
-        case '30d': return subDays(now, 30);
-        case '90d': return subMonths(now, 3);
-        default: return subHours(now, 24);
-      }
-    };
+    // Calculate start date based on time range
+    let startDate;
+    switch (timeRange) {
+      case '7d':
+        startDate = subDays(new Date(), 7);
+        break;
+      case '30d':
+        startDate = subDays(new Date(), 30);
+        break;
+      case '90d':
+        startDate = subDays(new Date(), 90);
+        break;
+      default: // 24h
+        startDate = subHours(new Date(), 24);
+    }
 
-    const startDate = getStartDate();
-
-    // Get all URLs for the user with their history
+    // Fetch URLs and their histories
     const urls = await prisma.uRL.findMany({
       where: { userId: session.user.id },
       include: {
-        history: {
+        urlHistories: {
           where: {
             timestamp: { gte: startDate }
           },
           orderBy: {
-            timestamp: 'asc'
+            timestamp: 'desc'
           }
         }
       }
     });
 
-    // Process response time data
+    // Process incidents with validation
+    const recentIncidents = [];
+    let totalResponseTime = 0;
+    let totalChecks = 0;
+    let upChecks = 0;
+    const statusCounts = {
+      down: 0,
+      error: 0,
+      up: 0,
+      pending: 0
+    };
+
+    urls.forEach(url => {
+      if (!url.urlHistories) return;
+      
+      url.urlHistories.forEach(history => {
+        if (history.status === 'down' || history.status === 'error') {
+          recentIncidents.push({
+            id: history.id,
+            url: url.url,
+            status: history.status,
+            error: history.error || 'Unknown error',
+            timestamp: history.timestamp
+          });
+        }
+        
+        // Update counts only for valid status
+        if (statusCounts.hasOwnProperty(history.status)) {
+          statusCounts[history.status]++;
+        }
+        
+        if (history.responseTime) {
+          totalResponseTime += history.responseTime;
+          totalChecks++;
+        }
+        
+        if (history.status === 'up') upChecks++;
+      });
+    });
+
+    // Sort incidents by timestamp
+    recentIncidents.sort((a, b) => b.timestamp - a.timestamp);
+
+    // Calculate averages and percentages
+    const avgResponseTime = totalChecks > 0 ? totalResponseTime / totalChecks : 0;
+    const uptimePercentage = totalChecks > 0 ? (upChecks / totalChecks) * 100 : 0;
+
+    // Prepare chart data
     const responseTimeData = {
-      labels: [],
+      labels: urls.map(url => url.name || url.url),
       datasets: [{
         label: 'Average Response Time (ms)',
-        data: [],
+        data: urls.map(url => {
+          const urlAvg = url.urlHistories.reduce((acc, history) => {
+            return history.responseTime ? acc + history.responseTime : acc;
+          }, 0) / url.urlHistories.length;
+          return Math.round(urlAvg || 0);
+        }),
         borderColor: 'rgb(59, 130, 246)',
         backgroundColor: 'rgba(59, 130, 246, 0.5)',
       }]
     };
 
-    // Process uptime data
     const uptimeData = {
-      labels: [],
+      labels: urls.map(url => url.name || url.url),
       datasets: [{
         label: 'Uptime Percentage',
-        data: [],
+        data: urls.map(url => {
+          const upCount = url.urlHistories.filter(h => h.status === 'up').length;
+          return Math.round((upCount / url.urlHistories.length) * 100) || 0;
+        }),
         borderColor: 'rgb(34, 197, 94)',
         backgroundColor: 'rgba(34, 197, 94, 0.5)',
       }]
     };
 
-    // Calculate incident distribution
-    let incidents = {
-      'HTTP Error': 0,
-      'Timeout': 0,
-      'DNS Error': 0,
-      'Other': 0
-    };
-
-    // Process the data
-    urls.forEach(url => {
-      if (url.history.length > 0) {
-        // Group history by hour/day based on time range
-        const groupedHistory = groupHistoryByTimeRange(url.history, timeRange);
-        
-        groupedHistory.forEach((group, index) => {
-          if (index >= responseTimeData.labels.length) {
-            responseTimeData.labels.push(group.label);
-            responseTimeData.datasets[0].data.push(group.avgResponseTime);
-            
-            const uptimePercentage = (group.upCount / group.totalChecks) * 100;
-            uptimeData.labels.push(group.label);
-            uptimeData.datasets[0].data.push(uptimePercentage);
-          } else {
-            responseTimeData.datasets[0].data[index] = 
-              (responseTimeData.datasets[0].data[index] + group.avgResponseTime) / 2;
-            
-            const uptimePercentage = (group.upCount / group.totalChecks) * 100;
-            uptimeData.datasets[0].data[index] = 
-              (uptimeData.datasets[0].data[index] + uptimePercentage) / 2;
-          }
-        });
-
-        // Process incidents
-        url.history.forEach(record => {
-          if (record.status === 'down' && record.error) {
-            if (record.error.includes('timeout')) {
-              incidents['Timeout']++;
-            } else if (record.error.includes('DNS')) {
-              incidents['DNS Error']++;
-            } else if (record.error.includes('HTTP')) {
-              incidents['HTTP Error']++;
-            } else {
-              incidents['Other']++;
-            }
-          }
-        });
-      }
-    });
-
     const incidentDistribution = {
-      labels: Object.keys(incidents),
+      labels: ['Down', 'Error', 'Up', 'Pending'],
       datasets: [{
-        data: Object.values(incidents),
+        data: [
+          statusCounts.down || 0,
+          statusCounts.error || 0,
+          statusCounts.up || 0,
+          statusCounts.pending || 0
+        ],
         backgroundColor: [
           'rgba(239, 68, 68, 0.5)',
           'rgba(245, 158, 11, 0.5)',
@@ -136,33 +146,18 @@ export async function GET(request) {
       }]
     };
 
-    // Collect recent incidents
-    const recentIncidents = [];
-    urls.forEach(url => {
-      if (url.history.length > 0) {
-        url.history.forEach(record => {
-          if (record.status === 'down' || record.status === 'error') {
-            recentIncidents.push({
-              id: record.id,
-              url: url.url,
-              status: record.status,
-              error: record.error,
-              timestamp: record.timestamp
-            });
-          }
-        });
-      }
-    });
-
-    // Sort incidents by timestamp, most recent first
-    recentIncidents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
     return NextResponse.json({
       responseTimeData,
       uptimeData,
       incidentDistribution,
-      incidents: recentIncidents.slice(0, 10) // Return only the 10 most recent incidents
+      incidents: recentIncidents.slice(0, 10), // Only return 10 most recent incidents
+      stats: {
+        avgResponseTime: Math.round(avgResponseTime),
+        uptimePercentage: Math.round(uptimePercentage * 100) / 100,
+        totalIncidents: recentIncidents.length
+      }
     });
+
   } catch (error) {
     console.error('Analytics error:', error);
     return NextResponse.json(
@@ -170,43 +165,4 @@ export async function GET(request) {
       { status: 500 }
     );
   }
-}
-
-function groupHistoryByTimeRange(history, timeRange) {
-  const groups = new Map();
-  
-  history.forEach(record => {
-    let key;
-    switch (timeRange) {
-      case '24h':
-        key = record.timestamp.getHours();
-        break;
-      case '7d':
-      case '30d':
-        key = record.timestamp.toISOString().split('T')[0];
-        break;
-      case '90d':
-        key = `${record.timestamp.getFullYear()}-${record.timestamp.getMonth() + 1}`;
-        break;
-    }
-
-    if (!groups.has(key)) {
-      groups.set(key, {
-        label: key.toString(),
-        totalResponseTime: 0,
-        upCount: 0,
-        totalChecks: 0,
-      });
-    }
-
-    const group = groups.get(key);
-    group.totalResponseTime += record.responseTime || 0;
-    group.upCount += record.status === 'up' ? 1 : 0;
-    group.totalChecks++;
-  });
-
-  return Array.from(groups.values()).map(group => ({
-    ...group,
-    avgResponseTime: group.totalResponseTime / group.totalChecks
-  }));
 }

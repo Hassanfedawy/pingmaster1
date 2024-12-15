@@ -27,12 +27,27 @@ const DashboardPage = () => {
 
   const fetchIncidents = useCallback(async () => {
     try {
+      setLoading(true);
+      console.log('Fetching incidents...');
+      
       const response = await fetch('/api/analytics?timeRange=24h');
       const data = await response.json();
       
-      // Get incidents from the response
-      const recentIncidents = data.incidents || [];
-      setIncidents(recentIncidents);
+      console.log('Received data:', data);
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch incidents');
+      }
+      
+      // Make sure we're getting an array of incidents
+      if (Array.isArray(data.incidents)) {
+        setIncidents(data.incidents);
+        console.log('Set incidents:', data.incidents);
+      } else {
+        console.warn('Incidents data is not an array:', data.incidents);
+        setIncidents([]);
+      }
+      
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Failed to fetch incidents:', error);

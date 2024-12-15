@@ -1,37 +1,66 @@
-import { MonitoringService } from '@/lib/monitoring';
 import { NextResponse } from 'next/server';
-
-// Use global state to persist monitoring state across hot reloads
-const globalForMonitoring = global;
-globalForMonitoring.monitoringPromise = globalForMonitoring.monitoringPromise || null;
+import { monitoringInstance } from '@/lib/monitoringInstance';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export async function GET() {
   try {
-    if (!globalForMonitoring.monitoringPromise) {
-      globalForMonitoring.monitoringPromise = MonitoringService.startMonitoring();
-      await globalForMonitoring.monitoringPromise;
-      return NextResponse.json({ message: 'Monitoring service started successfully' });
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    return NextResponse.json({ message: 'Monitoring service is already running' });
+
+    if (monitoringInstance.isRunning()) {
+      return NextResponse.json({ 
+        status: 'running',
+        message: 'Monitoring service is already running' 
+      });
+    }
+
+    await monitoringInstance.initialize();
+    
+    return NextResponse.json({ 
+      status: 'started',
+      message: 'Monitoring service started successfully' 
+    });
   } catch (error) {
-    console.error('Failed to start monitoring service:', error);
-    // Reset the promise on error so we can try again
-    globalForMonitoring.monitoringPromise = null;
+    console.error('Monitoring service error:', error);
     return NextResponse.json(
-      { error: 'Failed to start monitoring service: ' + error.message },
+      { error: 'Failed to manage monitoring service' },
       { status: 500 }
     );
   }
 }
 
-// Initialize monitoring in development (will be handled by _app.js in production)
-if (process.env.NODE_ENV === 'development' && !globalForMonitoring.monitoringPromise) {
-  globalForMonitoring.monitoringPromise = MonitoringService.startMonitoring()
-    .then(() => {
-      console.log('Monitoring service started automatically in development');
-    })
-    .catch((error) => {
-      console.error('Failed to start monitoring service:', error);
-      globalForMonitoring.monitoringPromise = null;
-    });
+export async function POST(request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { action } = await request.json();
+
+    switch (action) {
+      case 'start':
+        await monitoringInstance.initialize();
+        return NextResponse.json({ message: 'Monitoring service started' });
+      
+      case 'stop':
+        await monitoringInstance.stop();
+        return NextResponse.json({ message: 'Monitoring service stopped' });
+      
+      default:
+        return NextResponse.json(
+          { error: 'Invalid action' },
+          { status: 400 }
+        );
+    }
+  } catch (error) {
+    console.error('Monitoring service error:', error);
+    return NextResponse.json(
+      { error: 'Failed to manage monitoring service' },
+      { status: 500 }
+    );
+  }
 }
